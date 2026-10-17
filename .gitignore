@@ -1,0 +1,27 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+crash.log
+
+# Node / frontend
+node_modules/
+dist/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Go
+*.exe
+*.test
+*.out
+coverage.out
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
