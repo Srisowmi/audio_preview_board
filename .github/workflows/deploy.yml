@@ -1,18 +1,18 @@
-name: Deploy backend
+name: CI and deploy backend
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
-# Required for GitHub OIDC -> AWS role assumption.
 permissions:
-  id-token: write
   contents: read
 
 concurrency:
-  group: deploy-backend
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
@@ -20,7 +20,7 @@ env:
   LAMBDA_FUNCTION_NAME: ${{ vars.LAMBDA_FUNCTION_NAME || 'audio-preview-prod' }}
 
 jobs:
-  test:
+  backend-test:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,9 +39,37 @@ jobs:
       - name: Unit tests (race detector)
         run: go test -race ./...
 
-  deploy:
-    needs: test
+  frontend-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Typecheck and build
+        run: npm run build
+
+  # Deploys only for pushes to main (never for pull requests).
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [backend-test, frontend-test]
+    runs-on: ubuntu-latest
+    # Required for GitHub OIDC -> AWS role assumption.
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
