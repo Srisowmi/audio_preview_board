@@ -4,9 +4,17 @@ Search iTunes tracks, build a shortlist, and play 30-second previews in the brow
 
 | | |
 |---|---|
-| **Live app (frontend)** | `TODO: https://<your-app>.vercel.app` |
-| **Live API (backend)** | `TODO: https://<id>.lambda-url.ap-south-1.on.aws` (try `/api/health`) |
+| **Live app (frontend)** | https://audio-preview-board.vercel.app |
+| **Live API (backend)** | https://sucq2bn66m6wh5cx52evqhjld40oultz.lambda-url.ap-south-1.on.aws |
 | **Design document** | [docs/DESIGN.md](docs/DESIGN.md) (architecture, data model, API docs, low-level design) |
+
+Example endpoints:
+
+- [/api/health](https://sucq2bn66m6wh5cx52evqhjld40oultz.lambda-url.ap-south-1.on.aws/api/health)
+- [/api/search?q=coldplay](https://sucq2bn66m6wh5cx52evqhjld40oultz.lambda-url.ap-south-1.on.aws/api/search?q=coldplay)
+- [/api/tracks/1122782283](https://sucq2bn66m6wh5cx52evqhjld40oultz.lambda-url.ap-south-1.on.aws/api/tracks/1122782283)
+
+> **Reviewer reminder:** both deployments stay up until the review is complete. Afterwards, run `terraform destroy` in `terraform/` to remove all AWS resources and stop charges (see [Tear down](#tear-down)).
 
 ## Repository layout
 
@@ -60,7 +68,7 @@ A container-image Lambda can't be created before its image exists, and the image
 
 ```powershell
 cd terraform
-copy terraform.tfvars.example terraform.tfvars    # edit github_repo / allowed_origin if needed
+copy terraform.tfvars.example terraform.tfvars    # edit allowed_origin (and github_* IDs if you forked) if needed
 terraform init
 
 # 1. ECR repository + GitHub OIDC provider + CI role only
@@ -69,6 +77,7 @@ terraform output github_actions_role_arn
 ```
 
 2. In GitHub: **Settings → Secrets and variables → Actions → New repository secret** `AWS_ROLE_ARN` = the role ARN above.
+   (GitHub now issues OIDC tokens with an immutable-ID `sub` claim, `repo:<owner>@<owner_id>/<repo>@<repo_id>:ref:refs/heads/main`, so the role's trust policy is built from the `github_owner`, `github_owner_id`, `github_repo_name` and `github_repo_id` variables; find the IDs with `gh api repos/<owner>/<repo> --jq '.owner.id, .id'`.)
    (If your AWS account already has a GitHub OIDC provider, set `create_github_oidc_provider = false` in `terraform.tfvars` first.)
 3. Push to `main`. The workflow runs the tests, builds the image, pushes `:latest` and `:<sha>` to ECR, and skips the Lambda update because the function doesn't exist yet.
 4. Create the rest:
@@ -82,13 +91,28 @@ From now on every push to `main` runs the tests, pushes a new image and calls `a
 
 After deploying the frontend, set `allowed_origin = "https://<your-app>.vercel.app"` in `terraform.tfvars` and run `terraform apply` again (it only updates a Lambda environment variable).
 
-Key variables (`terraform/variables.tf`): `aws_region`, `environment`, `app_port`, `cache_ttl`, `allowed_origin`, `github_repo`, `lambda_memory_mb`, `lambda_timeout_seconds`.
+Key variables (`terraform/variables.tf`): `aws_region`, `environment`, `app_port`, `cache_ttl`, `allowed_origin`, `github_owner(_id)`, `github_repo_name`/`github_repo_id`, `lambda_memory_mb`, `lambda_timeout_seconds`.
 
-**Tear down** (please do this after the review to avoid charges):
+### Deployment order used for the live deployment
+
+1. `terraform apply -target=aws_ecr_repository.api -target=aws_iam_role_policy.github_actions` created the ECR repository, the GitHub OIDC provider and the CI role.
+2. Saved the `github_actions_role_arn` output as the GitHub secret `AWS_ROLE_ARN`.
+3. Pushed to `main`: CI ran the tests, built the image and pushed `:latest` and `:<sha>` to ECR (the Lambda update was skipped because the function didn't exist yet).
+4. Ran a full `terraform apply`, which created the Lambda, Function URL, log group and permissions. Took the URL from `terraform output api_url`.
+5. Deployed the frontend on Vercel (Root Directory `frontend`, Framework Vite) with `VITE_API_URL` set to the backend URL, no trailing slash.
+6. Once the Vercel URL was known, set `allowed_origin = "https://audio-preview-board.vercel.app"` in `terraform.tfvars` and re-applied (only a Lambda environment variable changes).
+7. Redeployed the frontend in Vercel so the build picked up `VITE_API_URL`. Every later push to `main` redeploys both sides automatically.
+
+### Tear down
+
+Please run this after the review to avoid ongoing AWS charges:
 
 ```powershell
+cd terraform
 terraform destroy
 ```
+
+This removes the Lambda, Function URL, ECR repository (including its images), log group and the IAM/OIDC resources. The Vercel project can be deleted separately from the Vercel dashboard.
 
 ## Architecture write-up
 
@@ -98,12 +122,17 @@ terraform destroy
 
 **IaC design.** Terraform is split into `providers.tf`, `variables.tf`, `main.tf`, `github_oidc.tf` and `outputs.tf`, with region, environment, port, cache TTL, allowed origin and sizing all parameterised. IAM is least-privilege: the Lambda role can write only to its own log group, and the CI role can push only to this ECR repository and update only this function. CI uses GitHub OIDC restricted to the `main` branch of this repo, so there are no long-lived keys anywhere. CORS is handled once, in Go, so the Function URL has no CORS block (avoiding duplicate headers). Terraform ignores `image_uri` drift because CI owns image rollouts. State is local and git-ignored, as permitted by the brief.
 
+## Notes and decisions
+
+**GitHub OIDC `sub` claim.** The first deploy failed with "Not authorized to perform sts:AssumeRoleWithWebIdentity" even though the trust policy matched the documented `repo:<owner>/<repo>:ref:refs/heads/main` format. A temporary debug step in the workflow (which printed only the token's `sub` and `aud` claims) showed that GitHub now sends the immutable-ID format, `repo:Srisowmi@104438958/audio_preview_board@1423213683:ref:refs/heads/main`. The role's trust policy is now an exact `StringEquals` match built from the owner/repo names and IDs (Terraform variables), so it stays scoped to this repository's `main` branch, and the debug step has been removed.
+
 ## What I would do next
 
-- **Shared cache across Lambda instances** (e.g. DynamoDB with TTL, or ElastiCache) so cold starts and parallel instances don't re-hit iTunes; alternatively move to ECS Fargate for a long-lived process.
-- **Drag-and-drop reordering** of the shortlist (the up/down buttons are the keyboard-accessible baseline; drag-and-drop would be an enhancement on top).
-- **More frontend tests:** component tests for the player and progress bar (seek by keyboard and pointer), and an end-to-end test with Playwright.
-- **Terraform remote state** (S3 + locking) and separate environments; a Terraform plan step on pull requests.
+- **Drag-and-drop reordering** of the shortlist. The up/down buttons are the keyboard-accessible baseline; drag-and-drop would be an enhancement on top.
+- **Shared cache** (DynamoDB with TTL, or ElastiCache) because the Lambda cache is per execution environment: cold starts and parallel instances each start empty and can re-hit iTunes. Alternatively move to ECS Fargate for a long-lived process.
+- **Server-side shortlist with authentication**, so a shortlist follows the user across devices instead of living in one browser's localStorage.
+- **End-to-end tests with Playwright** (search, shortlist, single-player behaviour, seeking), plus component tests for the player and progress bar.
+- **Custom domain** for the API and the app (Route 53 + ACM, CloudFront or API Gateway in front of Lambda), which would also give a stable CORS origin.
+- **Remote Terraform state** (S3 bucket with a DynamoDB lock table) and separate environments, plus a `terraform plan` step on pull requests.
 - **Backend hardening:** per-IP rate limiting, a CloudWatch alarm on 5xx/throttles, and request metrics.
-- **Automatic frontend/CORS wiring:** manage the frontend's domain through a Terraform variable fed by the Vercel project, rather than the manual second `terraform apply`.
-- **Pause on tab change / media session controls** (lock-screen play/pause) for the player.
+- **Automatic CORS wiring:** feed the frontend's domain into Terraform rather than the manual second `terraform apply`.
