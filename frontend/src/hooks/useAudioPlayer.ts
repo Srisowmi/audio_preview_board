@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Track } from "../types";
 
-const FALLBACK_DURATION = 30; // iTunes previews are 30s clips
+/** iTunes previews are 30s clips; used until the audio metadata reports the real length. */
+export const FALLBACK_DURATION = 30;
 
 export interface PlayerApi {
   track: Track | null;
@@ -12,8 +13,6 @@ export interface PlayerApi {
   error: string | null;
   /** Plays the track; if it is already the current track, toggles play/pause. */
   play: (track: Track) => void;
-  pause: () => void;
-  resume: () => void;
   /** Stops playback and clears the current track. */
   stop: () => void;
   seek: (seconds: number) => void;
@@ -124,15 +123,6 @@ export function useAudioPlayer(): PlayerApi {
     [startPlayback],
   );
 
-  const pause = useCallback(() => audioRef.current?.pause(), []);
-
-  const resume = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio || !currentIdRef.current) return;
-    if (audio.ended) audio.currentTime = 0;
-    startPlayback(audio);
-  }, [startPlayback]);
-
   const stop = useCallback(() => {
     const audio = audioRef.current;
     if (audio) {
@@ -159,7 +149,7 @@ export function useAudioPlayer(): PlayerApi {
   }, []);
 
   return useMemo(
-    () => ({ track, isPlaying, isLoading, currentTime, duration, error, play, pause, resume, stop, seek }),
-    [track, isPlaying, isLoading, currentTime, duration, error, play, pause, resume, stop, seek],
+    () => ({ track, isPlaying, isLoading, currentTime, duration, error, play, stop, seek }),
+    [track, isPlaying, isLoading, currentTime, duration, error, play, stop, seek],
   );
 }

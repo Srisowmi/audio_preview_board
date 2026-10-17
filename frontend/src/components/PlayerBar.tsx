@@ -1,8 +1,7 @@
 import { usePlayer } from "../context/PlayerContext";
+import { FALLBACK_DURATION } from "../hooks/useAudioPlayer";
 import { formatTime } from "../utils/formatTime";
 import { ProgressBar } from "./ProgressBar";
-
-const FALLBACK_DURATION = 30;
 
 /** Now-playing bar: play/pause, elapsed / total time and a seekable progress bar. */
 export function PlayerBar() {

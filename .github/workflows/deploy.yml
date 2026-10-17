@@ -70,20 +70,31 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    env:
+      # The secrets context can't be used in step `if:` directly, so expose a flag.
+      AWS_CONFIGURED: ${{ secrets.AWS_ROLE_ARN != '' }}
     steps:
+      - name: Check AWS configuration
+        if: env.AWS_CONFIGURED != 'true'
+        run: echo "::notice::Secret AWS_ROLE_ARN is not set, so the AWS deploy steps were skipped. Tests passed; add the secret once the AWS infrastructure exists (see README)."
+
       - uses: actions/checkout@v4
+        if: env.AWS_CONFIGURED == 'true'
 
       - name: Configure AWS credentials (OIDC)
+        if: env.AWS_CONFIGURED == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Log in to Amazon ECR
+        if: env.AWS_CONFIGURED == 'true'
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push image
+        if: env.AWS_CONFIGURED == 'true'
         id: image
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
@@ -99,6 +110,7 @@ jobs:
           echo "uri=$IMAGE:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Update Lambda function
+        if: env.AWS_CONFIGURED == 'true'
         env:
           IMAGE_URI: ${{ steps.image.outputs.uri }}
         run: |

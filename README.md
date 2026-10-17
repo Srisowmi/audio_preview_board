@@ -46,10 +46,11 @@ npm run build
 
 ## Deploy the frontend (Vercel)
 
-1. Import the GitHub repository in Vercel.
-2. Set **Root Directory** to `frontend`. Vite is auto-detected (build `npm run build`, output `dist`).
-3. Add the environment variable `VITE_API_URL` = the backend URL from `terraform output api_url` (no trailing slash).
-4. Deploy, then copy the resulting `https://….vercel.app` URL into Terraform's `allowed_origin` (see below) so the API's CORS accepts it. Vercel redeploys on every push to `main`.
+1. Import the GitHub repository in Vercel (**Add New → Project**).
+2. Set **Root Directory** = `frontend`.
+3. Set **Framework Preset** = `Vite` (build `npm run build`, output `dist`; both are auto-filled). No `vercel.json` is needed because the app is a single page with no client-side routes.
+4. Add the environment variable `VITE_API_URL` = the backend `api_url` from `terraform output api_url`, **without a trailing slash**. Vite bakes it in at build time, so redeploy after changing it.
+5. Deploy, then copy the resulting `https://….vercel.app` URL into Terraform's `allowed_origin` (see below) so the API's CORS accepts it. Vercel redeploys on every push to `main`.
 
 ## Deploy the backend (Terraform + GitHub Actions)
 
@@ -77,7 +78,7 @@ terraform apply
 terraform output api_url          # the public backend URL
 ```
 
-From now on every push to `main` runs the tests, pushes a new image and calls `aws lambda update-function-code`. Pull requests to `main` only run the tests.
+From now on every push to `main` runs the tests, pushes a new image and calls `aws lambda update-function-code`. Pull requests to `main` only run the tests. If the `AWS_ROLE_ARN` secret isn't set yet, the deploy job skips its AWS steps with a notice instead of failing.
 
 After deploying the frontend, set `allowed_origin = "https://<your-app>.vercel.app"` in `terraform.tfvars` and run `terraform apply` again (it only updates a Lambda environment variable).
 
