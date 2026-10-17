@@ -37,13 +37,13 @@ data "aws_iam_policy_document" "github_assume" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # Any workflow run in this repository. Temporarily widened from
-    # "repo:<repo>:ref:refs/heads/main" while debugging the real `sub` claim;
-    # tighten it again once the exact value is known.
+    # Only workflows on the configured branch of this repository. GitHub's
+    # immutable-ID sub format embeds the numeric owner and repo IDs, e.g.
+    # repo:Srisowmi@104438958/audio_preview_board@1423213683:ref:refs/heads/main
     condition {
-      test     = "StringLike"
+      test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:*"]
+      values   = ["repo:${var.github_owner}@${var.github_owner_id}/${var.github_repo_name}@${var.github_repo_id}:ref:refs/heads/${var.github_branch}"]
     }
   }
 }

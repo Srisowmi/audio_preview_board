@@ -44,10 +44,34 @@ variable "allowed_origin" {
   }
 }
 
-variable "github_repo" {
-  description = "GitHub repository (owner/name) whose main branch may deploy via OIDC."
+variable "github_owner" {
+  description = "GitHub account or organisation that owns the repository."
   type        = string
-  default     = "Srisowmi/audio_preview_board"
+  default     = "Srisowmi"
+}
+
+variable "github_owner_id" {
+  description = "Immutable numeric ID of the GitHub owner (used in the OIDC sub claim)."
+  type        = number
+  default     = 104438958
+}
+
+variable "github_repo_name" {
+  description = "GitHub repository name."
+  type        = string
+  default     = "audio_preview_board"
+}
+
+variable "github_repo_id" {
+  description = "Immutable numeric ID of the GitHub repository (used in the OIDC sub claim)."
+  type        = number
+  default     = 1423213683
+}
+
+variable "github_branch" {
+  description = "The only branch whose workflows may assume the deploy role."
+  type        = string
+  default     = "main"
 }
 
 variable "create_github_oidc_provider" {

@@ -60,7 +60,7 @@ A container-image Lambda can't be created before its image exists, and the image
 
 ```powershell
 cd terraform
-copy terraform.tfvars.example terraform.tfvars    # edit github_repo / allowed_origin if needed
+copy terraform.tfvars.example terraform.tfvars    # edit allowed_origin (and github_* IDs if you forked) if needed
 terraform init
 
 # 1. ECR repository + GitHub OIDC provider + CI role only
@@ -69,6 +69,7 @@ terraform output github_actions_role_arn
 ```
 
 2. In GitHub: **Settings → Secrets and variables → Actions → New repository secret** `AWS_ROLE_ARN` = the role ARN above.
+   (GitHub now issues OIDC tokens with an immutable-ID `sub` claim, `repo:<owner>@<owner_id>/<repo>@<repo_id>:ref:refs/heads/main`, so the role's trust policy is built from the `github_owner`, `github_owner_id`, `github_repo_name` and `github_repo_id` variables; find the IDs with `gh api repos/<owner>/<repo> --jq '.owner.id, .id'`.)
    (If your AWS account already has a GitHub OIDC provider, set `create_github_oidc_provider = false` in `terraform.tfvars` first.)
 3. Push to `main`. The workflow runs the tests, builds the image, pushes `:latest` and `:<sha>` to ECR, and skips the Lambda update because the function doesn't exist yet.
 4. Create the rest:
@@ -82,7 +83,7 @@ From now on every push to `main` runs the tests, pushes a new image and calls `a
 
 After deploying the frontend, set `allowed_origin = "https://<your-app>.vercel.app"` in `terraform.tfvars` and run `terraform apply` again (it only updates a Lambda environment variable).
 
-Key variables (`terraform/variables.tf`): `aws_region`, `environment`, `app_port`, `cache_ttl`, `allowed_origin`, `github_repo`, `lambda_memory_mb`, `lambda_timeout_seconds`.
+Key variables (`terraform/variables.tf`): `aws_region`, `environment`, `app_port`, `cache_ttl`, `allowed_origin`, `github_owner(_id)`, `github_repo_name`/`github_repo_id`, `lambda_memory_mb`, `lambda_timeout_seconds`.
 
 **Tear down** (please do this after the review to avoid charges):
 
