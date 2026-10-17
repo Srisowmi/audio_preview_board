@@ -37,11 +37,13 @@ data "aws_iam_policy_document" "github_assume" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # Only workflows running on the main branch of this repository.
+    # Any workflow run in this repository. Temporarily widened from
+    # "repo:<repo>:ref:refs/heads/main" while debugging the real `sub` claim;
+    # tighten it again once the exact value is known.
     condition {
-      test     = "StringEquals"
+      test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      values   = ["repo:${var.github_repo}:*"]
     }
   }
 }
